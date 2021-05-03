@@ -13,12 +13,17 @@ import tensorflow as tf
 
 # #
 #
-with VectorizedDenseGraph([4, 4], NormalInitializer(0.05), NormalInitializer(0.05)) as g:
-    order = topological_sort(g, g.tail)
-    print([(v.name, v.value.shape) for v in sorted(g.variables, key=lambda x: x.name)])
-    plot = plot(order)
-    plot.render(view=True)
+# with VectorizedDenseGraph([4, 4], NormalInitializer(0.05), NormalInitializer(0.05)) as g:
+#     order = topological_sort(g, g.tail)
+#     print([(v.name, v.value.shape) for v in sorted(g.variables, key=lambda x: x.name)])
+#     plot = plot(order)
+#     plot.render(view=True)
 
+x = np.arange(9)
+t = np.arange(4).reshape((1, 2, 2))
+k = tensor_to_kernel(t, x)[0]
+
+print(k @ x)
 
 # val1, val2, val3 = 0.9, 0.4, -1.3
 

@@ -38,20 +38,48 @@ def train_TF_model(layer_widths, epochs, learning_rate):
             y = y_train[tf.newaxis, i]
             loss = tf.keras.losses.sparse_categorical_crossentropy(y, y_pred, from_logits=True)
             history.append(float(loss))
+            # print(f'TF: {float(loss)}')
 
         grads = tape.gradient(loss, model.trainable_weights)
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
-    # # print(grads)
+        # if i % 1000 == 0:
+        #     print(f'Batch: {i}, Loss = {history[-1]}')
+    # print(grads)
+
+    # i = 0
+    # for grad in grads:
+    #     name = f'W_{i//2}' if i %2 == 0 else f'b_{i//2}'
+    #     plt.title(name)
+    #     plt.hist(grad.numpy().flatten(), density=True, bins=50)
+    #     plt.savefig(f'grad_hists/tf/{name}.png')
+    #     plt.close()
+    #     i+= 1
+
+    plt.title('TF')
     plt.plot(history)
     plt.show()
+    plt.close()
 
 def train_step(g, order, feed_dict, history, learning_rate):
     # y_pred -> numpy array of logits
     loss = forward_pass(order, feed_dict=feed_dict)
+    # print(loss)
     history.append(loss)
     grads = backward_pass(order)
-    var_grads = [(var.name, var.gradient) for var in g.variables]
+    var_grads = [(name, var.gradient) for name, var in g.variables.items()]
     # print(var_grads)
+
+    #
+    # i = 0
+    # for var_grad in var_grads:
+    #     i+= 1
+    #     name, grad = var_grad
+    #     plt.title(f'{name}')
+    #     plt.hist(grad.flatten(), density=True, bins=50)
+    #     plt.savefig(f'grad_hists/custom/{name}.png')
+    #     plt.close()
+
+
     # grads_list = {}
     # while len(var_grads) != 0:
     #     prefix = var_grads[0][0][:3]

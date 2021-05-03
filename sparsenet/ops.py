@@ -1,4 +1,4 @@
-from .graph import *
+from sparsenet.graph import *
 import numpy as np
 
 # Adds an arbitrary amount of numpy array inputs
@@ -6,9 +6,9 @@ class add(Operator):
     count = 0
 
     def __init__(self, *inputs, name=None):
+        name = f'add/{add.count}' if name is None else name
         super().__init__(name)
         self.inputs = inputs
-        self.name = f'add/{add.count}' if name is None else name
         add.count += 1
 
     def forward(self, inputs):
@@ -25,15 +25,16 @@ class reduce_sum(Operator):
     count = 0
 
     def __init__(self, *inputs, name=None):
+        name = f'sum/{reduce_sum.count}' if name is None else name
         super().__init__(name)
         self.inputs = inputs
-        self.name = f'sum/{reduce_sum.count}' if name is None else name
-        reduce_mean.count += 1
+        reduce_sum.count += 1
 
     def forward(self, inputs):
         return np.sum(inputs[0])
 
     def backward(self, inputs, dout):
+        dout = float(np.sum(dout))
         return [np.full_like(inputs[0], dout)]
 
 # Mean of a single numpy array
@@ -41,9 +42,9 @@ class reduce_mean(Operator):
     count = 0
 
     def __init__(self, *inputs, name=None):
+        name = f'mean/{reduce_mean.count}' if name is None else name
         super().__init__(name)
         self.inputs = inputs
-        self.name = f'mean/{reduce_mean.count}' if name is None else name
         reduce_mean.count += 1
 
     def forward(self, inputs):
@@ -57,9 +58,9 @@ class multiply(Operator):
     count = 0
 
     def __init__(self, a, b, name=None):
+        name = f'mul/{multiply.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a, b]
-        self.name = f'mul/{multiply.count}' if name is None else name
         multiply.count += 1
 
     def forward(self, inputs):
@@ -77,9 +78,9 @@ class divide(Operator):
     count = 0
 
     def __init__(self, a, b, name=None):
+        name = f'div/{divide.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a, b]
-        self.name = f'div/{divide.count}' if name is None else name
         divide.count += 1
 
     def forward(self, inputs):
@@ -88,16 +89,16 @@ class divide(Operator):
 
     def backward(self, inputs, dout):
         a, b = inputs
-        return dout / b, dout * a / np.power(b, 2)
+        return dout / b, -dout * a / np.power(b, 2)
 
 # Take a numpy array to the power of a constant or vice versa
 class power(Operator):
     count = 0
 
     def __init__(self, a, b, name=None):
+        name = f'pow/{power.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a, b]
-        self.name = f'pow/{power.count}' if name is None else name
         power.count += 1
 
     def forward(self, inputs):
@@ -108,38 +109,45 @@ class power(Operator):
         a, b = inputs
         return dout * b * np.power(a, (b - 1)), dout * np.log(a) * np.power(a, b)
 
+# Shortcut for sqrt using power op
+def sqrt(x):
+    return power(x, Constant(0.5, name='1/2'))
+
+
 # Take the log of a numpy array or constant
 class log(Operator):
     count = 0
 
     def __init__(self, a, name=None):
+        name = f'log/{log.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a]
-        self.name = f'log/{log.count}' if name is None else name
         log.count += 1
 
     def forward(self, inputs):
-        return np.log(inputs[0])
+        return np.log(np.maximum(inputs[0], 1e-16))
 
     def backward(self, inputs, dout):
-        return [dout / inputs[0]]
+        return [dout / np.maximum(inputs[0], 1e-16)]
 
 # Get the element at the ith index in a numpy array
 class array_slice(Operator):
     count = 0
 
     def __init__(self, a, i, name=None):
+        name = f'slice/{array_slice.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a, i]
-        self.name = f'slice/{array_slice.count}' if name is None else name
         array_slice.count += 1
 
     def forward(self, inputs):
         a, i = inputs
+        i = int(i)
         return a[i]
 
     def backward(self, inputs, dout):
         a, i = inputs
+        i = int(i)
         grad = np.zeros_like(a)
         grad[i] = dout
         return grad, 0
@@ -149,9 +157,9 @@ class matmul(Operator):
     count = 0
 
     def __init__(self, a, b, name=None):
+        name = f'matmul/{matmul.count}' if name is None else name
         super().__init__(name)
         self.inputs = [a, b]
-        self.name = f'matmul/{matmul.count}' if name is None else name
         matmul.count += 1
 
     def forward(self, inputs):
@@ -167,9 +175,9 @@ class concat(Operator):
     count = 0
 
     def __init__(self, inputs, name=None):
-        super().__init__()
+        name = f'concat/{concat.count}' if name is None else name
+        super().__init__(name)
         self.inputs = inputs
-        self.name = f'concat/{concat.count}' if name is None else name
         concat.count += 1
 
     def forward(self, inputs):
@@ -178,14 +186,33 @@ class concat(Operator):
     def backward(self, inputs, dout):
         return np.split(dout, len(inputs))
 
+# Zero pad an array for same convolutions
+class pad(Operator):
+    count = 0
+
+    def __init__(self, a, pad_dims, name=None):
+        name = f'pad/{pad.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a, pad_dims]
+        pad.count += 1
+
+    def forward(self, inputs):
+        a, pad_dims = inputs
+        return np.pad(a, pad_dims)
+
+    def backward(self, inputs, dout):
+        a, pad_dims = inputs
+        indices = tuple(slice(a, -b if b != 0 else None) for a, b in pad_dims)
+        return [dout[indices], None]
+
 # Element-wise maximum of a numpy array
 class maximum(Operator):
     count = 0
 
     def __init__(self, a, name=None):
-        super().__init__()
+        name = f'max/{maximum.count}' if name is None else name
+        super().__init__(name)
         self.inputs = [a]
-        self.name = f'max/{maximum.count}' if name is None else name
         maximum.count += 1
 
     def forward(self, inputs):
@@ -199,9 +226,9 @@ class absolute_value(Operator):
     count = 0
 
     def __init__(self, a, name=None):
-        super().__init__()
+        name = f'abs/{absolute_value.count}' if name is None else name
+        super().__init__(name)
         self.inputs = [a]
-        self.name = f'abs/{absolute_value.count}' if name is None else name
         absolute_value.count += 1
 
     def forward(self, inputs):
@@ -210,14 +237,110 @@ class absolute_value(Operator):
     def backward(self, inputs, dout):
         return [dout * np.sign(inputs[0])]
 
+# Element-wise sine of a numpy array
+class sin(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'sin/{sin.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        sin.count += 1
+
+    def forward(self, inputs):
+        return np.sin(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [dout * np.cos(inputs[0])]
+
+# Element-wise cosine of a numpy array
+class cos(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'cos/{cos.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        cos.count += 1
+
+    def forward(self, inputs):
+        return np.cos(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [-dout * np.sin(inputs[0])]
+
+# Element-wise tangent of a numpy array
+class tan(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'tan/{tan.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        tan.count += 1
+
+    def forward(self, inputs):
+        return np.tan(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [-dout * np.tan(inputs[0])]
+
+# Element-wise sine of a numpy array
+class asin(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'asin/{asin.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        asin.count += 1
+
+    def forward(self, inputs):
+        return np.arcsin(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [dout / np.sqrt(1 - inputs[0]**2)]
+
+# Element-wise cosine of a numpy array
+class acos(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'acos/{acos.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        acos.count += 1
+
+    def forward(self, inputs):
+        return np.arccos(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [-dout / np.sqrt(1 - inputs[0]**2)]
+
+# Element-wise tangent of a numpy array
+class atan(Operator):
+    count = 0
+
+    def __init__(self, a, name=None):
+        name = f'atan/{atan.count}' if name is None else name
+        super().__init__(name)
+        self.inputs = [a]
+        atan.count += 1
+
+    def forward(self, inputs):
+        return np.arctan(inputs[0])
+
+    def backward(self, inputs, dout):
+        return [dout / (1 + inputs[0]**2)]
+
 # Element wise maximum with 0 of a numpy array
 class relu(Operator):
     count = 0
 
     def __init__(self, a, name=None):
-        super().__init__()
+        name = f'relu/{relu.count}' if name is None else name
+        super().__init__(name)
         self.inputs = [a]
-        self.name = f'relu/{relu.count}' if name is None else name
         relu.count += 1
 
     def forward(self, inputs):

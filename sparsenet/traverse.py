@@ -43,7 +43,7 @@ def backward_pass(order, target_node=None):
     return [node.gradient for node in order]
 
 
-def apply_grads(order, grads, learning_rate=0.01):
+def apply_grads(order, grads, learning_rate=0.001):
     i = 0
     for node in order:
         if isinstance(node, Variable):
